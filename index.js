@@ -12,6 +12,9 @@ const {
   TextInputStyle
 } = require("discord.js");
 
+const fs = require("fs");
+const path = require("path");
+
 const client = new Client({
   intents: [
     GatewayIntentBits.Guilds,
@@ -21,10 +24,12 @@ const client = new Client({
 });
 
 // =========================
-// CONFIGURAÇÃO PADRÃO
+// ARQUIVO DE CONFIGURAÇÃO
 // =========================
 
-let config = {
+const CONFIG_FILE = path.join(__dirname, "config.json");
+
+const configPadrao = {
   ticketsAtivos: true,
   categoria: "1547879820048990358",
   cargoADM: "",
@@ -37,6 +42,56 @@ let config = {
 };
 
 // =========================
+// CARREGAR CONFIGURAÇÃO
+// =========================
+
+function carregarConfig() {
+  try {
+    if (!fs.existsSync(CONFIG_FILE)) {
+      fs.writeFileSync(
+        CONFIG_FILE,
+        JSON.stringify(configPadrao, null, 2),
+        "utf8"
+      );
+
+      return { ...configPadrao };
+    }
+
+    const arquivo = fs.readFileSync(CONFIG_FILE, "utf8");
+    const configSalva = JSON.parse(arquivo);
+
+    return {
+      ...configPadrao,
+      ...configSalva
+    };
+
+  } catch (erro) {
+    console.error("❌ Erro ao carregar config.json:", erro);
+    return { ...configPadrao };
+  }
+}
+
+// =========================
+// SALVAR CONFIGURAÇÃO
+// =========================
+
+function salvarConfig() {
+  try {
+    fs.writeFileSync(
+      CONFIG_FILE,
+      JSON.stringify(config, null, 2),
+      "utf8"
+    );
+
+    console.log("💾 Configuração salva.");
+  } catch (erro) {
+    console.error("❌ Erro ao salvar config.json:", erro);
+  }
+}
+
+let config = carregarConfig();
+
+// =========================
 // BOT ONLINE
 // =========================
 
@@ -45,6 +100,7 @@ client.once("clientReady", async () => {
 
   for (const guild of client.guilds.cache.values()) {
     try {
+
       await guild.commands.create({
         name: "ticket",
         description: "Cria um ticket de atendimento"
@@ -56,8 +112,9 @@ client.once("clientReady", async () => {
       });
 
       console.log(`✅ Comandos registrados em: ${guild.name}`);
+
     } catch (erro) {
-      console.error(erro);
+      console.error("❌ Erro ao registrar comandos:", erro);
     }
   }
 });
@@ -92,20 +149,27 @@ client.on("interactionCreate", async (interaction) => {
       .setTitle("⚙️ Painel do Automet")
       .setDescription(
         "Configure o sistema de atendimento abaixo.\n\n" +
+
         `🎫 **Tickets:** ${
-          config.ticketsAtivos ? "🟢 Ativos" : "🔴 Desativados"
+          config.ticketsAtivos
+            ? "🟢 Ativos"
+            : "🔴 Desativados"
         }\n` +
+
         `📁 **Categoria:** ${
           config.categoria
             ? `<#${config.categoria}>`
             : "Não configurada"
         }\n` +
+
         `👤 **Cargo ADM:** ${
           config.cargoADM
             ? `<@&${config.cargoADM}>`
             : "Não configurado"
         }\n` +
+
         `🎨 **Cor:** ${config.cor}\n` +
+
         `🔘 **Botão:** ${config.nomeBotao}`
       )
       .setColor(config.cor);
@@ -189,7 +253,8 @@ client.on("interactionCreate", async (interaction) => {
 
     if (!config.ticketsAtivos) {
       return interaction.reply({
-        content: "❌ O sistema de tickets está desativado.",
+        content:
+          "❌ O sistema de tickets está desativado.",
         ephemeral: true
       });
     }
@@ -216,8 +281,11 @@ client.on("interactionCreate", async (interaction) => {
       const permissoes = [
         {
           id: guild.roles.everyone.id,
-          deny: [PermissionFlagsBits.ViewChannel]
+          deny: [
+            PermissionFlagsBits.ViewChannel
+          ]
         },
+
         {
           id: user.id,
           allow: [
@@ -226,6 +294,7 @@ client.on("interactionCreate", async (interaction) => {
             PermissionFlagsBits.ReadMessageHistory
           ]
         },
+
         {
           id: client.user.id,
           allow: [
@@ -237,8 +306,9 @@ client.on("interactionCreate", async (interaction) => {
         }
       ];
 
-      // Adiciona o cargo ADM se estiver configurado
+      // Cargo ADM
       if (config.cargoADM) {
+
         permissoes.push({
           id: config.cargoADM,
           allow: [
@@ -250,19 +320,28 @@ client.on("interactionCreate", async (interaction) => {
       }
 
       const canal = await guild.channels.create({
-        name: `ticket-${user.username}`.toLowerCase(),
+        name:
+          `ticket-${user.username}`
+            .toLowerCase()
+            .replace(/[^a-z0-9-]/g, "-"),
+
         type: ChannelType.GuildText,
+
         parent: config.categoria,
+
         topic: `ticket-${user.id}`,
+
         permissionOverwrites: permissoes
       });
 
       const fechar = new ActionRowBuilder().addComponents(
+
         new ButtonBuilder()
           .setCustomId("fechar_ticket")
           .setLabel("Fechar Ticket")
           .setEmoji("🔒")
           .setStyle(ButtonStyle.Danger)
+
       );
 
       const mensagem = config.mensagemTicket
@@ -275,15 +354,20 @@ client.on("interactionCreate", async (interaction) => {
       });
 
       await interaction.reply({
-        content: `✅ Seu ticket foi criado: ${canal}`,
+        content:
+          `✅ Seu ticket foi criado: ${canal}`,
         ephemeral: true
       });
 
     } catch (erro) {
 
-      console.error(erro);
+      console.error(
+        "❌ Erro ao criar ticket:",
+        erro
+      );
 
       if (!interaction.replied) {
+
         await interaction.reply({
           content:
             "❌ Não consegui criar o ticket. Verifique as permissões do bot e a categoria configurada.",
@@ -296,27 +380,41 @@ client.on("interactionCreate", async (interaction) => {
   }
 
   // =========================
-  // BOTÕES DO PAINEL
+  // BOTÕES
   // =========================
 
   if (interaction.isButton()) {
 
-    // ATIVAR / DESATIVAR TICKETS
-    if (interaction.customId === "config_ticket") {
+    // =========================
+    // TICKETS
+    // =========================
 
-      config.ticketsAtivos = !config.ticketsAtivos;
+    if (
+      interaction.customId === "config_ticket"
+    ) {
+
+      config.ticketsAtivos =
+        !config.ticketsAtivos;
+
+      salvarConfig();
 
       return interaction.reply({
         content:
           config.ticketsAtivos
-            ? "🟢 Sistema de tickets **ativado**."
-            : "🔴 Sistema de tickets **desativado**.",
+            ? "🟢 Sistema de tickets **ativado** e salvo."
+            : "🔴 Sistema de tickets **desativado** e salvo.",
+
         ephemeral: true
       });
     }
 
+    // =========================
     // CATEGORIA
-    if (interaction.customId === "config_categoria") {
+    // =========================
+
+    if (
+      interaction.customId === "config_categoria"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_categoria")
@@ -325,20 +423,28 @@ client.on("interactionCreate", async (interaction) => {
       const campo = new TextInputBuilder()
         .setCustomId("categoria_id")
         .setLabel("ID da categoria")
-        .setPlaceholder("Ex: 1547879820048990358")
+        .setPlaceholder(
+          "Ex: 1547879820048990358"
+        )
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setValue(config.categoria);
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
     }
 
-    // CARGO ADM
-    if (interaction.customId === "config_cargo") {
+    // =========================
+    // CARGO
+    // =========================
+
+    if (
+      interaction.customId === "config_cargo"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_cargo")
@@ -347,20 +453,28 @@ client.on("interactionCreate", async (interaction) => {
       const campo = new TextInputBuilder()
         .setCustomId("cargo_id")
         .setLabel("ID do cargo ADM")
-        .setPlaceholder("Cole o ID do cargo")
+        .setPlaceholder(
+          "Cole o ID do cargo"
+        )
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setValue(config.cargoADM || "");
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
     }
 
-    // MENSAGEM DO TICKET
-    if (interaction.customId === "config_mensagem") {
+    // =========================
+    // MENSAGEM
+    // =========================
+
+    if (
+      interaction.customId === "config_mensagem"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_mensagem")
@@ -369,20 +483,28 @@ client.on("interactionCreate", async (interaction) => {
       const campo = new TextInputBuilder()
         .setCustomId("mensagem")
         .setLabel("Mensagem")
-        .setPlaceholder("Use {usuario} para mencionar o cliente")
+        .setPlaceholder(
+          "Use {usuario} para mencionar o cliente"
+        )
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
         .setValue(config.mensagemTicket);
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
     }
 
+    // =========================
     // COR
-    if (interaction.customId === "config_cor") {
+    // =========================
+
+    if (
+      interaction.customId === "config_cor"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_cor")
@@ -397,14 +519,20 @@ client.on("interactionCreate", async (interaction) => {
         .setValue(config.cor);
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
     }
 
+    // =========================
     // BOTÃO
-    if (interaction.customId === "config_botao") {
+    // =========================
+
+    if (
+      interaction.customId === "config_botao"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_botao")
@@ -413,31 +541,45 @@ client.on("interactionCreate", async (interaction) => {
       const campo = new TextInputBuilder()
         .setCustomId("nome_botao")
         .setLabel("Nome do botão")
-        .setPlaceholder("Ex: Abrir Ticket")
+        .setPlaceholder(
+          "Ex: Abrir Ticket"
+        )
         .setStyle(TextInputStyle.Short)
         .setRequired(true)
         .setValue(config.nomeBotao);
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
     }
 
-    // FECHAMENTO
-    if (interaction.customId === "config_fechamento") {
+    // =========================
+    // FECHAR TICKET
+    // =========================
+
+    if (
+      interaction.customId === "config_fechamento"
+    ) {
 
       return interaction.reply({
         content:
           "🗑️ **Fechamento de tickets**\n\n" +
           "O botão 🔒 **Fechar Ticket** já é adicionado automaticamente aos tickets.",
+
         ephemeral: true
       });
     }
 
+    // =========================
     // ATENDIMENTO
-    if (interaction.customId === "config_atendimento") {
+    // =========================
+
+    if (
+      interaction.customId === "config_atendimento"
+    ) {
 
       const modal = new ModalBuilder()
         .setCustomId("modal_atendimento")
@@ -448,10 +590,13 @@ client.on("interactionCreate", async (interaction) => {
         .setLabel("Mensagem")
         .setStyle(TextInputStyle.Paragraph)
         .setRequired(true)
-        .setValue(config.mensagemAtendimento);
+        .setValue(
+          config.mensagemAtendimento
+        );
 
       modal.addComponents(
-        new ActionRowBuilder().addComponents(campo)
+        new ActionRowBuilder()
+          .addComponents(campo)
       );
 
       return interaction.showModal(modal);
@@ -461,26 +606,44 @@ client.on("interactionCreate", async (interaction) => {
     // FECHAR TICKET
     // =========================
 
-    if (interaction.customId === "fechar_ticket") {
+    if (
+      interaction.customId === "fechar_ticket"
+    ) {
 
-      if (!interaction.channel.name.startsWith("ticket-")) {
+      if (
+        !interaction.channel ||
+        !interaction.channel.name.startsWith("ticket-")
+      ) {
+
         return interaction.reply({
-          content: "❌ Este canal não é um ticket.",
+          content:
+            "❌ Este canal não é um ticket.",
+
           ephemeral: true
         });
       }
 
       await interaction.reply({
-        content: "🔒 Fechando o ticket...",
+        content:
+          "🔒 Fechando o ticket...",
+
         ephemeral: true
       });
 
       setTimeout(async () => {
+
         try {
+
           await interaction.channel.delete();
+
         } catch (erro) {
-          console.error(erro);
+
+          console.error(
+            "❌ Erro ao fechar ticket:",
+            erro
+          );
         }
+
       }, 2000);
 
       return;
@@ -493,87 +656,198 @@ client.on("interactionCreate", async (interaction) => {
 
   if (interaction.isModalSubmit()) {
 
+    // =========================
     // CATEGORIA
-    if (interaction.customId === "modal_categoria") {
+    // =========================
 
-      config.categoria =
-        interaction.fields.getTextInputValue("categoria_id").trim();
+    if (
+      interaction.customId === "modal_categoria"
+    ) {
+
+      const categoria =
+        interaction.fields
+          .getTextInputValue(
+            "categoria_id"
+          )
+          .trim();
+
+      const canal =
+        interaction.guild.channels.cache.get(
+          categoria
+        );
+
+      if (
+        !canal ||
+        canal.type !== ChannelType.GuildCategory
+      ) {
+
+        return interaction.reply({
+          content:
+            "❌ Esse ID não corresponde a uma categoria válida.",
+
+          ephemeral: true
+        });
+      }
+
+      config.categoria = categoria;
+
+      salvarConfig();
 
       return interaction.reply({
         content:
-          `✅ Categoria configurada!\n\n📁 <#${config.categoria}>`,
+          `✅ Categoria salva!\n\n📁 ${canal.name}`,
+
         ephemeral: true
       });
     }
 
+    // =========================
     // CARGO
-    if (interaction.customId === "modal_cargo") {
+    // =========================
 
-      config.cargoADM =
-        interaction.fields.getTextInputValue("cargo_id").trim();
+    if (
+      interaction.customId === "modal_cargo"
+    ) {
+
+      const cargo =
+        interaction.guild.roles.cache.get(
+          interaction.fields
+            .getTextInputValue("cargo_id")
+            .trim()
+        );
+
+      if (!cargo) {
+
+        return interaction.reply({
+          content:
+            "❌ Cargo não encontrado. Verifique o ID.",
+
+          ephemeral: true
+        });
+      }
+
+      config.cargoADM = cargo.id;
+
+      salvarConfig();
 
       return interaction.reply({
         content:
-          `✅ Cargo ADM configurado!\n\n👤 <@&${config.cargoADM}>`,
+          `✅ Cargo ADM salvo!\n\n👤 ${cargo}`,
+
         ephemeral: true
       });
     }
 
+    // =========================
     // MENSAGEM
-    if (interaction.customId === "modal_mensagem") {
+    // =========================
+
+    if (
+      interaction.customId === "modal_mensagem"
+    ) {
 
       config.mensagemTicket =
-        interaction.fields.getTextInputValue("mensagem");
+        interaction.fields
+          .getTextInputValue(
+            "mensagem"
+          );
+
+      salvarConfig();
 
       return interaction.reply({
-        content: "✅ Mensagem do ticket atualizada!",
+        content:
+          "✅ Mensagem do ticket salva.",
+
         ephemeral: true
       });
     }
 
+    // =========================
     // COR
-    if (interaction.customId === "modal_cor") {
+    // =========================
+
+    if (
+      interaction.customId === "modal_cor"
+    ) {
 
       const novaCor =
-        interaction.fields.getTextInputValue("cor").trim();
+        interaction.fields
+          .getTextInputValue(
+            "cor"
+          )
+          .trim();
 
-      if (!/^#[0-9A-Fa-f]{6}$/.test(novaCor)) {
+      if (
+        !/^#[0-9A-Fa-f]{6}$/.test(
+          novaCor
+        )
+      ) {
+
         return interaction.reply({
           content:
             "❌ Cor inválida. Use o formato `#7A00FF`.",
+
           ephemeral: true
         });
       }
 
       config.cor = novaCor;
 
-      return interaction.reply({
-        content: `✅ Cor alterada para **${novaCor}**.`,
-        ephemeral: true
-      });
-    }
-
-    // BOTÃO
-    if (interaction.customId === "modal_botao") {
-
-      config.nomeBotao =
-        interaction.fields.getTextInputValue("nome_botao").trim();
+      salvarConfig();
 
       return interaction.reply({
         content:
-          `✅ Nome do botão alterado para **${config.nomeBotao}**.`,
+          `✅ Cor salva: **${novaCor}**`,
+
         ephemeral: true
       });
     }
 
-    // ATENDIMENTO
-    if (interaction.customId === "modal_atendimento") {
+    // =========================
+    // BOTÃO
+    // =========================
 
-      config.mensagemAtendimento =
-        interaction.fields.getTextInputValue("atendimento");
+    if (
+      interaction.customId === "modal_botao"
+    ) {
+
+      config.nomeBotao =
+        interaction.fields
+          .getTextInputValue(
+            "nome_botao"
+          )
+          .trim();
+
+      salvarConfig();
 
       return interaction.reply({
-        content: "✅ Mensagem de atendimento atualizada!",
+        content:
+          `✅ Nome do botão salvo: **${config.nomeBotao}**`,
+
+        ephemeral: true
+      });
+    }
+
+    // =========================
+    // ATENDIMENTO
+    // =========================
+
+    if (
+      interaction.customId === "modal_atendimento"
+    ) {
+
+      config.mensagemAtendimento =
+        interaction.fields
+          .getTextInputValue(
+            "atendimento"
+          );
+
+      salvarConfig();
+
+      return interaction.reply({
+        content:
+          "✅ Mensagem de atendimento salva.",
+
         ephemeral: true
       });
     }
@@ -584,4 +858,6 @@ client.on("interactionCreate", async (interaction) => {
 // LOGIN
 // =========================
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(
+  process.env.DISCORD_TOKEN
+);
