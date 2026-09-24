@@ -706,9 +706,7 @@ client.on(
 
       if (
         !interaction.channel ||
-        !interaction.channel.name.startsWith(
-          "ticket-"
-        )
+        interaction.channel.parentId !== config.categoria
       ) {
 
         return interaction.reply({
