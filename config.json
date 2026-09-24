@@ -5,5 +5,8 @@
   "mensagemTicket": "🎫 **Ticket criado!**\n\n👤 **Cliente:** {usuario}\n\n📋 Explique o que você precisa e aguarde o atendimento.",
   "cor": "#7A00FF",
   "nomeBotao": "Abrir Ticket",
-  "mensagemAtendimento": "📋 **Atendimento**\n\nExplique o que você precisa e aguarde um membro da equipe."
+  "mensagemAtendimento": "📋 **Atendimento**\n\nExplique o que você precisa e aguarde um membro da equipe.",
+  "pagamentosAtivos": true,
+  "webhookAtivo": true,
+  "portaWebhook": 3000
 }
