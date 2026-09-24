@@ -70,7 +70,14 @@ const configPadrao = {
 
   webhookAtivo: true,
 
-  portaWebhook: 3000
+  portaWebhook: 3000,
+
+  // Valores automáticos das filas
+  valorFila: 2.80,
+  valorAmbos: 2.40,
+
+  // Categoria para onde o ticket vai após finalizar o pagamento
+  categoriaPartida: "partida"
 };
 
 // =========================
@@ -209,7 +216,8 @@ function criarPagamento({
   canalId,
   pagadorId,
   recebedorId,
-  valor
+  valor,
+  tipoFila
 }) {
   const id = gerarIdPagamento();
 
@@ -225,6 +233,8 @@ function criarPagamento({
     recebedorId,
 
     valor: Number(valor),
+
+    tipoFila: tipoFila || "NORMAL",
 
     status: "PENDENTE",
 
@@ -265,6 +275,63 @@ function atualizarPagamento(id, dados) {
   salvarPagamentos();
 
   return pagamentos[id];
+}
+
+// =========================
+// MOVER TICKET PARA PARTIDA
+// =========================
+
+async function moverParaPartida(id) {
+  const pagamento = pagamentos[id];
+
+  if (!pagamento) {
+    return false;
+  }
+
+  try {
+    const guild = client.guilds.cache.get(pagamento.guildId);
+
+    if (!guild) {
+      return false;
+    }
+
+    const canal = guild.channels.cache.get(pagamento.canalId);
+
+    if (!canal) {
+      return false;
+    }
+
+    const categoria = guild.channels.cache.find(
+      canalCategoria =>
+        canalCategoria.type === ChannelType.GuildCategory &&
+        canalCategoria.name.toLowerCase() ===
+          String(config.categoriaPartida || "partida").toLowerCase()
+    );
+
+    if (!categoria) {
+      console.error(
+        `❌ Categoria "${config.categoriaPartida || "partida"}" não encontrada.`
+      );
+      return false;
+    }
+
+    await canal.setParent(categoria.id, {
+      lockPermissions: false
+    });
+
+    console.log(
+      `✅ Canal ${canal.name} movido para a categoria ${categoria.name}.`
+    );
+
+    return true;
+  } catch (erro) {
+    console.error(
+      "❌ Erro ao mover ticket para partida:",
+      erro
+    );
+
+    return false;
+  }
 }
 
 // =========================
@@ -353,7 +420,9 @@ async function atualizarMensagemPagamento(id) {
 
           `💵 **Valor:** ${formatarValor(
             pagamento.valor
-          )}\n\n` +
+          )}\n` +
+
+          `🎫 **Tipo da fila:** ${pagamento.tipoFila || "NORMAL"}\n\n` +
 
           `📤 **Pagador:** <@${pagamento.pagadorId}>\n` +
 
@@ -741,16 +810,16 @@ client.on(
           )
           .setRequired(true);
 
-      const valor =
+      const tipoFila =
         new TextInputBuilder()
           .setCustomId(
-            "valor"
+            "tipo_fila"
           )
           .setLabel(
-            "Valor em reais"
+            "Tipo da fila"
           )
           .setPlaceholder(
-            "Ex: 20.00"
+            "Digite NORMAL ou AMBOS"
           )
           .setStyle(
             TextInputStyle.Short
@@ -763,7 +832,7 @@ client.on(
           .addComponents(recebedor),
 
         new ActionRowBuilder()
-          .addComponents(valor)
+          .addComponents(tipoFila)
       );
 
       return interaction.showModal(
@@ -924,10 +993,14 @@ client.on(
             id
           );
 
+        if (finalizado) {
+          await moverParaPartida(id);
+        }
+
         await interaction.reply({
           content:
             finalizado
-              ? "🎉 Pagamento finalizado! Os dois lados confirmaram."
+              ? "🎉 Pagamento finalizado! Os dois lados confirmaram. O ticket foi movido para a partida."
               : "✅ Recebimento confirmado.",
           ephemeral: true
         });
@@ -1439,16 +1512,36 @@ client.on(
             )
             .trim();
 
-        const valorTexto =
+        const tipoFilaTexto =
           interaction.fields
             .getTextInputValue(
-              "valor"
+              "tipo_fila"
             )
             .trim()
-            .replace(",", ".");
+            .toLowerCase();
 
-        const valor =
-          Number(valorTexto);
+        let tipoFila;
+        let valor;
+
+        if (
+          tipoFilaTexto === "normal" ||
+          tipoFilaTexto === "fila"
+        ) {
+          tipoFila = "NORMAL";
+          valor = Number(config.valorFila ?? 2.80);
+        } else if (
+          tipoFilaTexto === "ambos" ||
+          tipoFilaTexto === "os dois"
+        ) {
+          tipoFila = "AMBOS";
+          valor = Number(config.valorAmbos ?? 2.40);
+        } else {
+          return interaction.reply({
+            content:
+              "❌ Tipo inválido. Digite `NORMAL` ou `AMBOS`.",
+            ephemeral: true
+          });
+        }
 
         if (
           !/^\d{17,20}$/.test(
@@ -1514,7 +1607,9 @@ client.on(
 
             recebedorId,
 
-            valor
+            valor,
+
+            tipoFila
           });
 
         const embed =
@@ -1530,6 +1625,8 @@ client.on(
               `📤 **Quem paga:** <@${pagamento.pagadorId}>\n` +
 
               `📥 **Quem recebe:** <@${pagamento.recebedorId}>\n\n` +
+
+              `🎫 **Tipo da fila:** ${pagamento.tipoFila || "NORMAL"}\n` +
 
               `💵 **Valor:** ${formatarValor(
                 pagamento.valor
@@ -1940,6 +2037,10 @@ app.post(
         verificarPagamentoFinalizado(
           paymentId
         );
+
+      if (finalizado) {
+        await moverParaPartida(paymentId);
+      }
 
       await atualizarMensagemPagamento(
         paymentId
