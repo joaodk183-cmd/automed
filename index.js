@@ -1629,6 +1629,24 @@ client.on(
           components: [botoes]
         });
 
+        const guiaConfirmacao = new EmbedBuilder()
+          .setTitle("❓ Como Confirmar Seu Pagamento?")
+          .setColor(config.cor)
+          .setDescription(
+            "🟢 - **Jeito Correto:**\n\n" +
+            `Pago ${membroRecebedor.displayName}\n` +
+            `${membroRecebedor.displayName} Pago\n` +
+            `pg ${membroRecebedor.displayName}\n` +
+            `${membroRecebedor.displayName} pg\n\n` +
+            "🔴 - **Jeito Errado:**\n\n" +
+            `${membroRecebedor.displayName} Nubank (faltou Pago ou pg)\n` +
+            "Pago (faltou nome e sobrenome)"
+          );
+
+        await interaction.channel.send({
+          embeds: [guiaConfirmacao]
+        });
+
         return;
       }
 
@@ -1833,6 +1851,146 @@ client.on(
     }
   }
 );
+
+// =========================
+// CONFIRMAÇÃO AUTOMÁTICA POR MENSAGEM
+// =========================
+
+function normalizarTexto(texto) {
+  return String(texto || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function limparNome(texto) {
+  return normalizarTexto(texto)
+    .replace(/[^a-z0-9\s]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function nomeConfere(texto, nomeEsperado) {
+  const mensagem = limparNome(texto);
+  const nome = limparNome(nomeEsperado);
+
+  if (!mensagem || !nome) {
+    return false;
+  }
+
+  // A mensagem precisa conter exatamente o nome, sem palavras extras.
+  return mensagem === nome;
+}
+
+client.on("messageCreate", async message => {
+  try {
+    if (message.author.bot || !message.guild) {
+      return;
+    }
+
+    const textoOriginal = message.content.trim();
+    if (!textoOriginal) {
+      return;
+    }
+
+    const pagamentosDoCanal = Object.values(pagamentos)
+      .filter(p =>
+        p &&
+        p.guildId === message.guild.id &&
+        p.canalId === message.channel.id &&
+        p.status !== "FINALIZADO"
+      )
+      .sort((a, b) =>
+        new Date(b.criadoEm).getTime() -
+        new Date(a.criadoEm).getTime()
+      );
+
+    const pagamento = pagamentosDoCanal[0];
+    if (!pagamento) {
+      return;
+    }
+
+    const membro = await message.guild.members.fetch(message.author.id).catch(() => null);
+    if (!membro) {
+      return;
+    }
+
+    const ehADM =
+      membro.permissions.has(PermissionFlagsBits.Administrator) ||
+      (config.cargoADM && membro.roles.cache.has(config.cargoADM));
+
+    if (!ehADM) {
+      return;
+    }
+
+    const texto = normalizarTexto(textoOriginal);
+    const temPagamento = /\b(pago|pg)\b/i.test(texto);
+
+    // Só analisamos mensagens que parecem ser confirmações de pagamento.
+    if (!temPagamento) {
+      return;
+    }
+
+    const semMarcador = texto
+      .replace(/\b(pago|pg)\b/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+
+    if (!semMarcador) {
+      await message.reply(
+        "🔴 **Jeito errado:** informe **Pago + nome e sobrenome** ou **nome e sobrenome + Pago**."
+      );
+      return;
+    }
+
+    const recebedor = await message.guild.members.fetch(pagamento.recebedorId).catch(() => null);
+    if (!recebedor) {
+      return;
+    }
+
+    const nomesPossiveis = [
+      recebedor.displayName,
+      recebedor.user.globalName,
+      recebedor.user.username
+    ].filter(Boolean);
+
+    const nomeValido = nomesPossiveis.some(nome =>
+      nomeConfere(semMarcador, nome)
+    );
+
+    if (!nomeValido) {
+      await message.reply(
+        `🔴 **Jeito errado:** o nome precisa ser **${recebedor.displayName}** e conter **Pago** ou **pg**.`
+      );
+      return;
+    }
+
+    atualizarPagamento(pagamento.id, {
+      pagamentoConfirmado: true,
+      pagadorConfirmou: true,
+      status: "PAGO",
+      provedor: "CONFIRMACAO_POR_MENSAGEM",
+      confirmadoEm: new Date().toISOString()
+    });
+
+    const finalizado = verificarPagamentoFinalizado(pagamento.id);
+
+    if (finalizado) {
+      await moverParaPartida(pagamento.id);
+    }
+
+    await atualizarMensagemPagamento(pagamento.id);
+
+    await message.reply(
+      finalizado
+        ? "✅ Pagamento reconhecido! O recebimento também já estava confirmado e o canal foi movido para **partida**."
+        : "✅ Pagamento reconhecido automaticamente! Agora o recebedor pode confirmar em **Recebi**."
+    );
+  } catch (erro) {
+    console.error("❌ Erro na confirmação automática:", erro);
+  }
+});
 
 // =========================
 // WEBHOOK DE PAGAMENTO
