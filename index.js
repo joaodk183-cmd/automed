@@ -773,18 +773,6 @@ client.on(
         });
       }
 
-      if (
-        !interaction.channel ||
-        interaction.channel.parentId !== config.categoria
-      ) {
-
-        return interaction.reply({
-          content:
-            "❌ Use o comando `/pagamento` dentro de um ticket.",
-          ephemeral: true
-        });
-      }
-
       const modal =
         new ModalBuilder()
           .setCustomId(
@@ -810,29 +798,10 @@ client.on(
           )
           .setRequired(true);
 
-      const tipoFila =
-        new TextInputBuilder()
-          .setCustomId(
-            "tipo_fila"
-          )
-          .setLabel(
-            "Tipo da fila"
-          )
-          .setPlaceholder(
-            "Digite NORMAL ou AMBOS"
-          )
-          .setStyle(
-            TextInputStyle.Short
-          )
-          .setRequired(true);
-
       modal.addComponents(
 
         new ActionRowBuilder()
-          .addComponents(recebedor),
-
-        new ActionRowBuilder()
-          .addComponents(tipoFila)
+          .addComponents(recebedor)
       );
 
       return interaction.showModal(
@@ -1512,36 +1481,9 @@ client.on(
             )
             .trim();
 
-        const tipoFilaTexto =
-          interaction.fields
-            .getTextInputValue(
-              "tipo_fila"
-            )
-            .trim()
-            .toLowerCase();
-
-        let tipoFila;
-        let valor;
-
-        if (
-          tipoFilaTexto === "normal" ||
-          tipoFilaTexto === "fila"
-        ) {
-          tipoFila = "NORMAL";
-          valor = Number(config.valorFila ?? 2.80);
-        } else if (
-          tipoFilaTexto === "ambos" ||
-          tipoFilaTexto === "os dois"
-        ) {
-          tipoFila = "AMBOS";
-          valor = Number(config.valorAmbos ?? 2.40);
-        } else {
-          return interaction.reply({
-            content:
-              "❌ Tipo inválido. Digite `NORMAL` ou `AMBOS`.",
-            ephemeral: true
-          });
-        }
+        // Toda solicitação de fila usa automaticamente o valor de AMBOS.
+        const tipoFila = "AMBOS";
+        const valor = Number(config.valorAmbos ?? 2.40);
 
         if (
           !/^\d{17,20}$/.test(
